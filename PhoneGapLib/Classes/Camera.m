@@ -32,10 +32,13 @@
 	if (sourceTypeString != nil) {
 		sourceType = (UIImagePickerControllerSourceType)[sourceTypeString intValue];
 	}
-
+	
 	bool hasCamera = [UIImagePickerController isSourceTypeAvailable:sourceType];
 	if (!hasCamera) {
 		NSLog(@"Camera.getPicture: source type %d not available.", sourceType);
+		if(errorCallback) {
+			[webView stringByEvaluatingJavaScriptFromString:[NSString stringWithFormat:@"%@(\"Camera.getPicture: source type %d not available.\");", errorCallback, sourceType]];
+		}
 		return;
 	}
 
