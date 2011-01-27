@@ -57,7 +57,29 @@
 	pickerController.quality = [options integerValueForKey:@"quality" defaultValue:100 withRange:NSMakeRange(0, 100)];
 	pickerController.returnType = (DestinationType)[options integerValueForKey:@"destinationType" defaultValue:0 withRange:NSMakeRange(0, 2)];
 	
-	[[super appViewController] presentModalViewController:pickerController animated:YES];
+	if ([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad) {
+		NSUInteger x = [options integerValueForKey:@"popoverRectX" defaultValue:0 withRange:NSMakeRange(0, self.webView.frame.size.width)] + self.webView.frame.origin.x;
+		NSUInteger y = [options integerValueForKey:@"popoverRectY" defaultValue:0 withRange:NSMakeRange(0, self.webView.frame.size.height)] + self.webView.frame.origin.y;
+		NSUInteger w = [options integerValueForKey:@"popoverRectWidth" defaultValue:self.webView.frame.size.width withRange:NSMakeRange(0, self.webView.frame.size.width)];
+		NSUInteger h = [options integerValueForKey:@"popoverRectHeight" defaultValue:self.webView.frame.size.height withRange:NSMakeRange(0, self.webView.frame.size.height)];
+				
+		popoverController = [[UIPopoverController alloc] initWithContentViewController:pickerController];
+		popoverController.delegate = self;
+		[popoverController presentPopoverFromRect:CGRectMake(x,y,w,h)
+		                                   inView:self.webView
+		                 permittedArrowDirections:UIPopoverArrowDirectionAny
+		                                 animated:YES];
+		
+	} else {
+		[[super appViewController] presentModalViewController:pickerController animated:YES];
+	}
+	
+}
+
+- (void)popoverControllerDidDismissPopover:(UIPopoverController *)popoverController {
+	NSLog(@"popover done");
+	[popoverController release];
+	
 }
 
 - (void)imagePickerController:(UIImagePickerController*)picker didFinishPickingMediaWithInfo:(NSDictionary*)info
@@ -65,7 +87,11 @@
 	CameraPicker* cameraPicker = (CameraPicker*)picker;
 	CGFloat quality = (double)cameraPicker.quality / 100.0; 
 	
-	[picker dismissModalViewControllerAnimated:YES];
+	if([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad) {
+		[popoverController dismissPopoverAnimated:YES];
+	} else {
+		[picker dismissModalViewControllerAnimated:YES];
+	}
 	
 	
 	NSString* mediaType = [info objectForKey:UIImagePickerControllerMediaType];
@@ -123,7 +149,11 @@
 
 - (void)imagePickerControllerDidCancel:(UIImagePickerController*)picker
 {
-	[picker dismissModalViewControllerAnimated:YES];
+	if([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad) {
+		[popoverController dismissPopoverAnimated:YES];
+	} else {
+		[picker dismissModalViewControllerAnimated:YES];
+	}
 }
 
 - (void) postImage:(UIImage*)anImage withFilename:(NSString*)filename toUrl:(NSURL*)url 
@@ -168,6 +198,10 @@
 {
 	if (pickerController) {
 		[pickerController release];
+	}
+	
+	if(popoverController) {
+		[popoverController release];
 	}
 	[super dealloc];
 }
