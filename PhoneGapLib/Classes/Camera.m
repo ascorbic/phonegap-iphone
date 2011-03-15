@@ -16,29 +16,17 @@
 
 - (void) getPicture:(NSMutableArray*)arguments withDict:(NSMutableDictionary*)options
 {
-	NSUInteger argc = [arguments count];
-	NSString* successCallback = nil, *errorCallback = nil;
-	
-	if (argc > 0) successCallback = [arguments objectAtIndex:0];
-	if (argc > 1) errorCallback = [arguments objectAtIndex:1];
-	
-	if (argc < 1) {
-		NSLog(@"Camera.getPicture: Missing 1st parameter.");
-		return;
-	}
+	NSString* callbackId = [arguments objectAtIndex:0];
 	
 	NSString* sourceTypeString = [options valueForKey:@"sourceType"];
 	UIImagePickerControllerSourceType sourceType = UIImagePickerControllerSourceTypeCamera; // default
 	if (sourceTypeString != nil) {
 		sourceType = (UIImagePickerControllerSourceType)[sourceTypeString intValue];
 	}
-	
+
 	bool hasCamera = [UIImagePickerController isSourceTypeAvailable:sourceType];
 	if (!hasCamera) {
 		NSLog(@"Camera.getPicture: source type %d not available.", sourceType);
-		if(errorCallback) {
-			[webView stringByEvaluatingJavaScriptFromString:[NSString stringWithFormat:@"%@(\"Camera.getPicture: source type %d not available.\");", errorCallback, sourceType]];
-		}
 		return;
 	}
 
@@ -52,94 +40,80 @@
 	pickerController.delegate = self;
 	pickerController.sourceType = sourceType;
 	pickerController.allowsEditing = allowEdit; // THIS IS ALL IT TAKES FOR CROPPING - jm
-	pickerController.successCallback = successCallback;
-	pickerController.errorCallback = errorCallback;
+	pickerController.callbackId = callbackId;
+	//pickerController.successCallback = successCallback;
+	//pickerController.errorCallback = errorCallback;
 	pickerController.quality = [options integerValueForKey:@"quality" defaultValue:100 withRange:NSMakeRange(0, 100)];
 	pickerController.returnType = (DestinationType)[options integerValueForKey:@"destinationType" defaultValue:0 withRange:NSMakeRange(0, 2)];
 	
-	if ([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad) {
-		NSUInteger x = [options integerValueForKey:@"popoverRectX" defaultValue:0 withRange:NSMakeRange(0, self.webView.frame.size.width)] + self.webView.frame.origin.x;
-		NSUInteger y = [options integerValueForKey:@"popoverRectY" defaultValue:0 withRange:NSMakeRange(0, self.webView.frame.size.height)] + self.webView.frame.origin.y;
-		NSUInteger w = [options integerValueForKey:@"popoverRectWidth" defaultValue:self.webView.frame.size.width withRange:NSMakeRange(0, self.webView.frame.size.width)];
-		NSUInteger h = [options integerValueForKey:@"popoverRectHeight" defaultValue:self.webView.frame.size.height withRange:NSMakeRange(0, self.webView.frame.size.height)];
-				
-		popoverController = [[UIPopoverController alloc] initWithContentViewController:pickerController];
-		popoverController.delegate = self;
-		[popoverController presentPopoverFromRect:CGRectMake(x,y,w,h)
-		                                   inView:self.webView
-		                 permittedArrowDirections:UIPopoverArrowDirectionAny
-		                                 animated:YES];
-		
-	} else {
-		[[super appViewController] presentModalViewController:pickerController animated:YES];
-	}
-	
-}
-
-- (void)popoverControllerDidDismissPopover:(UIPopoverController *)popoverController {
-	NSLog(@"popover done");
-	[popoverController release];
-	
+	[[super appViewController] presentModalViewController:pickerController animated:YES];
 }
 
 - (void)imagePickerController:(UIImagePickerController*)picker didFinishPickingMediaWithInfo:(NSDictionary*)info
 {
 	CameraPicker* cameraPicker = (CameraPicker*)picker;
 	CGFloat quality = (double)cameraPicker.quality / 100.0; 
+	NSString* callbackId = cameraPicker.callbackId;
 	
-	if([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad) {
-		[popoverController dismissPopoverAnimated:YES];
-	} else {
-		[picker dismissModalViewControllerAnimated:YES];
-	}
+	[picker dismissModalViewControllerAnimated:YES];
 	
 	
 	NSString* mediaType = [info objectForKey:UIImagePickerControllerMediaType];
 	if ([mediaType isEqualToString:(NSString*)kUTTypeImage])
 	{
-		if (cameraPicker.successCallback) {
-			
-			NSString* jsString = NULL;
-							// get the image
-				UIImage* image = nil;
-				if (cameraPicker.allowsEditing && [info objectForKey:UIImagePickerControllerEditedImage]){
-					image = [info objectForKey:UIImagePickerControllerEditedImage];
-				}else {
-					image = [info objectForKey:UIImagePickerControllerOriginalImage];
-				}
-				NSData* data = UIImageJPEGRepresentation(image, quality);
-				if (cameraPicker.returnType == DestinationTypeFileUri){
-					
-					// write to temp directory and reutrn URI
-					// get the temp directory path
-					NSString* docsPath = [[PhoneGapDelegate applicationDocumentsDirectory] stringByAppendingPathComponent: [PhoneGapDelegate tmpFolderName]];
-					NSError* err = nil;
-					NSFileManager* fileMgr = [[NSFileManager alloc] init]; //recommended by apple (vs [NSFileManager defaultManager]) to be theadsafe
-					
-					if ( [fileMgr fileExistsAtPath:docsPath] == NO ){ // check in case tmp dir got deleted
-						[fileMgr createDirectoryAtPath:docsPath withIntermediateDirectories: NO attributes: nil error: nil];
-					}
-					// generate unique file name
-					NSString* filePath;
-					int i=1;
-					do {
-						filePath = [NSString stringWithFormat:@"%@/photo_%03d.jpg", docsPath, i++];
-					} while([fileMgr fileExistsAtPath: filePath]);
-					// save file
-					if (![data writeToFile: filePath options: NSAtomicWrite error: &err]){
-						jsString = [NSString stringWithFormat:@"%@(\"%@\");", cameraPicker.errorCallback, [err localizedDescription]];
-					}else{	
-						jsString = [NSString stringWithFormat:@"%@(\"%@\");", cameraPicker.successCallback, [NSURL fileURLWithPath: filePath]];
-					}
-					[fileMgr release];
-				
-				}else{
-					jsString = [NSString stringWithFormat:@"%@(\"%@\");", cameraPicker.successCallback, [data base64EncodedString]];
-				}
-			[webView stringByEvaluatingJavaScriptFromString:jsString];
+		
+		
+		NSString* jsString = NULL;
+		PluginResult* result = nil;
+		
+		// get the image
+		UIImage* image = nil;
+		if (cameraPicker.allowsEditing && [info objectForKey:UIImagePickerControllerEditedImage]){
+			image = [info objectForKey:UIImagePickerControllerEditedImage];
+		}else {
+			image = [info objectForKey:UIImagePickerControllerOriginalImage];
 		}
+		NSData* data = UIImageJPEGRepresentation(image, quality);
+		if (cameraPicker.returnType == DestinationTypeFileUri){
+			
+			// write to temp directory and reutrn URI
+			// get the temp directory path
+			NSString* docsPath = [[PhoneGapDelegate applicationDocumentsDirectory] stringByAppendingPathComponent: [PhoneGapDelegate tmpFolderName]];
+			NSError* err = nil;
+			NSFileManager* fileMgr = [[NSFileManager alloc] init]; //recommended by apple (vs [NSFileManager defaultManager]) to be theadsafe
+			
+			
+			if ( [fileMgr fileExistsAtPath:docsPath] == NO ){ // check in case tmp dir got deleted
+				[fileMgr createDirectoryAtPath:docsPath withIntermediateDirectories: NO attributes: nil error: nil];
+			}
+			// generate unique file name
+			NSString* filePath;
+			int i=1;
+			do {
+				filePath = [NSString stringWithFormat:@"%@/photo_%03d.jpg", docsPath, i++];
+			} while([fileMgr fileExistsAtPath: filePath]);
+			// save file
+			if (![data writeToFile: filePath options: NSAtomicWrite error: &err]){
+				result = [PluginResult resultWithStatus: PGCommandStatus_OK messageAsString: [err localizedDescription]];
+				jsString = [result toErrorCallbackString:callbackId];
+				//jsString = [NSString stringWithFormat:@"%@(\"%@\");", cameraPicker.errorCallback, [err localizedDescription]];
+			}else{
+				result = [PluginResult resultWithStatus: PGCommandStatus_OK messageAsString: [NSURL fileURLWithPath: filePath]];
+				jsString = [result toSuccessCallbackString:callbackId];
+				//jsString = [NSString stringWithFormat:@"%@(\"%@\");", cameraPicker.successCallback, [NSURL fileURLWithPath: filePath]];
+			}
+			[fileMgr release];
+			
+		}else{
+			result = [PluginResult resultWithStatus: PGCommandStatus_OK messageAsString: [data base64EncodedString]];
+			jsString = [result toSuccessCallbackString:callbackId];
+			//jsString = [NSString stringWithFormat:@"%@(\"%@\");", cameraPicker.successCallback, [data base64EncodedString]];
+		}
+		[webView stringByEvaluatingJavaScriptFromString:jsString];
+		
 	}
 }
+
 // older api calls newer didFinishPickingMediaWithInfo
 - (void)imagePickerController:(UIImagePickerController*)picker didFinishPickingImage:(UIImage*)image editingInfo:(NSDictionary*)editingInfo
 {
@@ -149,11 +123,14 @@
 
 - (void)imagePickerControllerDidCancel:(UIImagePickerController*)picker
 {
-	if([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad) {
-		[popoverController dismissPopoverAnimated:YES];
-	} else {
-		[picker dismissModalViewControllerAnimated:YES];
-	}
+	CameraPicker* cameraPicker = (CameraPicker*)picker;
+	NSString* callbackId = cameraPicker.callbackId;
+	
+	[picker dismissModalViewControllerAnimated:YES];
+	// return media Capture error value for now (will update when implement MediaCapture api)
+	PluginResult* result = [PluginResult resultWithStatus: PGCommandStatus_OK messageAsString: @"3"]; // error callback expects string ATM
+	[webView stringByEvaluatingJavaScriptFromString:[result toErrorCallbackString: callbackId]];
+	
 }
 
 - (void) postImage:(UIImage*)anImage withFilename:(NSString*)filename toUrl:(NSURL*)url 
@@ -199,10 +176,6 @@
 	if (pickerController) {
 		[pickerController release];
 	}
-	
-	if(popoverController) {
-		[popoverController release];
-	}
 	[super dealloc];
 }
 
@@ -213,17 +186,15 @@
 
 @synthesize quality, postUrl;
 @synthesize returnType;
-@synthesize successCallback;
-@synthesize errorCallback;
+@synthesize callbackId;
+
 
 - (void) dealloc
 {
-	if (successCallback) {
-		[successCallback release];
+	if (callbackId) {
+		[callbackId release];
 	}
-	if (errorCallback) {
-		[errorCallback release];
-	}
+	
 	
 	[super dealloc];
 }
