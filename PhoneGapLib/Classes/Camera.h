@@ -34,10 +34,9 @@ typedef NSUInteger DestinationType;
 
 @end
 
-@interface Camera : PhoneGapCommand<UIImagePickerControllerDelegate, UINavigationControllerDelegate, UIPopoverControllerDelegate>
+@interface Camera : PhoneGapCommand<UIImagePickerControllerDelegate, UINavigationControllerDelegate>
 {
 	CameraPicker* pickerController;
-	UIPopoverController* popoverController;
 }
 
 /*
